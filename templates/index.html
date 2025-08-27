@@ -1,122 +1,90 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<title>ETH Privilegiada & Liquidez</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body { font-family: 'Roboto', sans-serif; background-color: #f4f4f9; }
-.card { background-color: #fff; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-h1, h5 { color: #2c3e50; }
-.list-group-item { border-radius: 8px; margin-bottom: 10px; }
-.bg-alta { background-color: #e74c3c; color: #fff; }
-.bg-positiva { background-color: #2ecc71; color: #fff; }
-.bg-neutral { background-color: #f1c40f; color: #000; }
-</style>
+    <meta charset="UTF-8">
+    <title>ETH Privilegiada & Liquidez</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: #1e1e1e;
+            padding: 20px;
+            text-align: center;
+        }
+        h1 {
+            margin: 0;
+        }
+        .container {
+            padding: 20px;
+        }
+        .datos {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            margin-bottom: 30px;
+        }
+        .card {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px #00000050;
+            min-width: 150px;
+            text-align: center;
+        }
+        .noticias {
+            max-width: 800px;
+            margin: auto;
+        }
+        .noticia {
+            background-color: #1e1e1e;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0px 0px 5px #00000050;
+        }
+        .noticia a {
+            color: #4fc3f7;
+            text-decoration: none;
+        }
+        .noticia a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
-<div class="container mt-4">
-  <h1 class="mb-2">ETH Privilegiada & Liquidez</h1>
-  <p class="text-muted mb-4"><small>Actualización automática cada 5 minutos</small></p>
-
-  <div class="row">
-    <!-- Sección liquidez y gráficos -->
-    <div class="col-md-5">
-      <div class="card p-3 mb-3">
-        <h5>Liquidez / Datos globales (CoinGecko)</h5>
-        <ul class="list-unstyled mt-2">
-          <li><strong>Precio ETH (USD):</strong> <span id="price">{{ eth.price }}</span></li>
-          <li><strong>Volumen 24h (USD):</strong> <span id="volume">{{ eth.total_volume }}</span></li>
-          <li><strong>Market Cap (USD):</strong> <span id="marketcap">{{ eth.market_cap }}</span></li>
-          <li><strong>Suministro circulante:</strong> {{ eth.supply }} ETH</li>
-          <li><small class="text-muted">Última referencia: {{ eth.last_updated or "N/A" }}</small></li>
-        </ul>
-      </div>
-
-      <div class="card p-3 mb-3">
-        <h5>Precio ETH</h5>
-        <canvas id="priceChart"></canvas>
-      </div>
-      <div class="card p-3 mb-3">
-        <h5>Volumen 24h</h5>
-        <canvas id="volumeChart"></canvas>
-      </div>
-      <div class="card p-3 mb-3">
-        <h5>Market Cap</h5>
-        <canvas id="marketCapChart"></canvas>
-      </div>
-    </div>
-
-    <!-- Noticias -->
-    <div class="col-md-7">
-      <div class="card p-3 mb-3">
-        <h5>Noticias importantes sobre ETH</h5>
-        <div class="list-group mt-2" id="news-container">
-          {% if news %}
-            {% for item in news %}
-              <div class="list-group-item {% if item.importance=='alta' %}bg-alta{% elif item.importance=='positiva' %}bg-positiva{% else %}bg-neutral{% endif %}">
-                <h6 class="mb-1">{{ item.title }}</h6>
-                <p>{{ item.content }}</p>
-              </div>
-            {% endfor %}
-          {% else %}
-            <p class="text-muted">No hay noticias recientes sobre ETH en este momento.</p>
-          {% endif %}
+    <header>
+        <h1>ETH Privilegiada & Liquidez</h1>
+    </header>
+    <div class="container">
+        <div class="datos">
+            <div class="card">
+                <h2>Precio ETH</h2>
+                <p id="precio">${{ eth_data['precio'] }}</p>
+            </div>
+            <div class="card">
+                <h2>Volumen 24h</h2>
+                <p id="volumen">${{ eth_data['volumen_24h'] }}</p>
+            </div>
+            <div class="card">
+                <h2>Market Cap</h2>
+                <p id="marketcap">${{ eth_data['market_cap'] }}</p>
+            </div>
         </div>
-      </div>
+
+        <h2 style="text-align:center;">Noticias sobre ETH</h2>
+        <div class="noticias" id="noticias">
+            {% for noticia in noticias %}
+            <div class="noticia">
+                <p>{{ noticia['titulo'] }}</p>
+                <a href="{{ noticia['link'] }}" target="_blank">Ver noticia</a>
+            </div>
+            {% endfor %}
+        </div>
     </div>
-  </div>
-</div>
-
-<script>
-async function updateCharts() {
-    const res = await fetch("/api/historial");
-    const data = await res.json();
-
-    const ctxPrice = document.getElementById('priceChart').getContext('2d');
-    const ctxVol = document.getElementById('volumeChart').getContext('2d');
-    const ctxCap = document.getElementById('marketCapChart').getContext('2d');
-
-    if(window.priceChart) window.priceChart.destroy();
-    if(window.volumeChart) window.volumeChart.destroy();
-    if(window.marketCapChart) window.marketCapChart.destroy();
-
-    window.priceChart = new Chart(ctxPrice, {
-        type: 'line',
-        data: { labels: data.fechas, datasets: [{ label:'Precio ETH (USD)', data:data.precios, borderColor:'rgba(26,188,156,1)', backgroundColor:'rgba(26,188,156,0.2)', tension:0.3 }] }
-    });
-
-    window.volumeChart = new Chart(ctxVol, {
-        type: 'line',
-        data: { labels: data.fechas, datasets: [{ label:'Volumen 24h', data:data.volumen, borderColor:'rgba(241,196,15,1)', backgroundColor:'rgba(241,196,15,0.2)', tension:0.3 }] }
-    });
-
-    window.marketCapChart = new Chart(ctxCap, {
-        type: 'line',
-        data: { labels: data.fechas, datasets: [{ label:'Market Cap', data:data.market_cap, borderColor:'rgba(52,152,219,1)', backgroundColor:'rgba(52,152,219,0.2)', tension:0.3 }] }
-    });
-}
-
-// Cargar gráfico al iniciar
-updateCharts();
-
-// Actualizar cada 5 minutos
-setInterval(async ()=>{
-    await updateCharts();
-
-    const res = await fetch("/");
-    const html = await res.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-
-    document.getElementById('price').textContent = doc.getElementById('price').textContent;
-    document.getElementById('volume').textContent = doc.getElementById('volume').textContent;
-    document.getElementById('marketcap').textContent = doc.getElementById('marketcap').textContent;
-    document.getElementById('news-container').innerHTML = doc.getElementById('news-container').innerHTML;
-}, 300000);
-</script>
 </body>
 </html>
