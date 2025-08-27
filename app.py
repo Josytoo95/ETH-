@@ -1,106 +1,82 @@
-from flask import Flask, render_template, jsonify
+import time
+import json
 import requests
+from flask import Flask, render_template
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
-from datetime import datetime
-import json
 import os
 
 app = Flask(__name__)
 
-KEYWORDS = ["ETH", "Ethereum"]
-HIST_FILE = "historial.json"
+# --- Archivos locales ---
+HISTORIAL_FILE = "historial.json"
+NOTICIAS_FILE = "noticias.json"
 
-# --- Obtener noticias de ETH ---
+# --- Función para consultar CoinGecko con caché ---
+def fetch_eth_data():
+    """Devuelve el precio, volumen y market cap de ETH usando caché de 1 min."""
+    if os.path.exists(HISTORIAL_FILE):
+        with open(HISTORIAL_FILE, "r", encoding="utf-8") as f:
+            historial = json.load(f)
+    else:
+        historial = {}
+
+    ahora = time.time()
+    # Si el último fetch fue hace menos de 60s, devuelve cache
+    if "last_fetch" in historial and ahora - historial["last_fetch"] < 60:
+        return historial["data"]
+
+    url = "https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false"
+    try:
+        resp = requests.get(url)
+        resp.raise_for_status()
+        data = resp.json()
+        eth_info = {
+            "precio": data["market_data"]["current_price"]["usd"],
+            "volumen_24h": data["market_data"]["total_volume"]["usd"],
+            "market_cap": data["market_data"]["market_cap"]["usd"]
+        }
+        # Guardar en cache
+        historial["last_fetch"] = ahora
+        historial["data"] = eth_info
+        with open(HISTORIAL_FILE, "w", encoding="utf-8") as f:
+            json.dump(historial, f, ensure_ascii=False, indent=2)
+        return eth_info
+    except requests.exceptions.HTTPError as e:
+        if resp.status_code == 429:
+            print("Demasiadas solicitudes a CoinGecko, usando último valor guardado")
+            return historial.get("data", {"precio":0,"volumen_24h":0,"market_cap":0})
+        else:
+            raise e
+
+# --- Función para obtener noticias ETH desde Coindesk ---
 def fetch_coindesk_eth():
     url = "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml"
     resp = requests.get(url)
-    resp.raise_for_status()
-    soup = BeautifulSoup(resp.content, "xml")  # sin necesidad de lxml
+    soup = BeautifulSoup(resp.content, "html.parser")
     items = soup.find_all("item")
     noticias = []
 
     for item in items:
         title = item.title.text
-        description = item.description.text if item.description else ""
-        if any(k.lower() in title.lower() for k in KEYWORDS):
-            try:
-                title_es = GoogleTranslator(source='en', target='es').translate(title)
-                content_es = GoogleTranslator(source='en', target='es').translate(description)
-            except:
-                title_es = title
-                content_es = description
+        link = item.link.text
+        if "ETH" in title or "Ethereum" in title:
+            # Traducir a español
+            title_es = GoogleTranslator(source='en', target='es').translate(title)
+            noticias.append({"titulo": title_es, "link": link})
 
-            # Clasificar importancia
-            titulo_lower = title_es.lower()
-            if any(p in titulo_lower for p in ["hack", "crash", "regulation"]):
-                importance = "alta"
-            elif any(p in titulo_lower for p in ["upgrade", "merge", "adopcion"]):
-                importance = "positiva"
-            else:
-                importance = "neutral"
-
-            noticias.append({"title": title_es, "content": content_es, "importance": importance})
+    # Guardar noticias en archivo
+    with open(NOTICIAS_FILE, "w", encoding="utf-8") as f:
+        json.dump(noticias, f, ensure_ascii=False, indent=2)
 
     return noticias
-
-# --- Obtener liquidez de ETH ---
-def fetch_eth_liquidity():
-    url = "https://api.coingecko.com/api/v3/coins/ethereum"
-    resp = requests.get(url, params={"localization": "false", "tickers": "false"})
-    resp.raise_for_status()
-    data = resp.json()
-    md = data.get("market_data", {})
-    total_volume = md.get("total_volume", {}).get("usd", 0)
-    market_cap = md.get("market_cap", {}).get("usd", 0)
-    price = md.get("current_price", {}).get("usd", 0)
-    supply = md.get("circulating_supply", 0)
-    last_updated = data.get("last_updated", "")
-
-    # Guardar historial
-    if os.path.exists(HIST_FILE):
-        with open(HIST_FILE, "r") as f:
-            historial = json.load(f)
-    else:
-        historial = {"fechas": [], "precios": [], "volumen": [], "market_cap": []}
-
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    historial["fechas"].append(now_str)
-    historial["precios"].append(price)
-    historial["volumen"].append(total_volume)
-    historial["market_cap"].append(market_cap)
-
-    # Mantener últimos 100 registros
-    for key in historial:
-        historial[key] = historial[key][-100:]
-
-    with open(HIST_FILE, "w") as f:
-        json.dump(historial, f)
-
-    return {
-        "price": price,
-        "total_volume": total_volume,
-        "market_cap": market_cap,
-        "supply": supply,
-        "last_updated": last_updated
-    }
 
 # --- Ruta principal ---
 @app.route("/")
 def index():
+    eth_data = fetch_eth_data()
     noticias = fetch_coindesk_eth()
-    eth = fetch_eth_liquidity()
-    return render_template("index.html", news=noticias, eth=eth)
-
-# --- Endpoint para historial (gráficos) ---
-@app.route("/api/historial")
-def historial_api():
-    if os.path.exists(HIST_FILE):
-        with open(HIST_FILE, "r") as f:
-            historial = json.load(f)
-    else:
-        historial = {"fechas": [], "precios": [], "volumen": [], "market_cap": []}
-    return jsonify(historial)
+    return render_template("index.html", eth_data=eth_data, noticias=noticias)
 
 if __name__ == "__main__":
     app.run(debug=True)
