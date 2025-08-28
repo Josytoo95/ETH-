@@ -1,82 +1,66 @@
-import time
-import json
-import requests
-from flask import Flask, render_template
-from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator
+from news import ethereum_news
+from datetime import datetime, timedelta
+import plotly.express as px
 
-app = Flask(__name__)
+def generate_html():
+    # --- Resumen semanal ---
+    summary = """
+    <div style="background-color:#111; padding:20px; border-radius:10px; margin-bottom:30px;">
+        <h2 style="color:#1e90ff;">Ethereum Weekly Summary</h2>
+        <p>This week, the price of ETH started at <strong>$4335.10</strong> and ended at <strong>$4517.32</strong>, 
+        increasing by <strong>4.20%</strong> over the week.</p>
+    </div>
+    """
 
-# --- Cachés en memoria ---
-cache_eth = {"data": None, "last_fetch": 0}
-cache_noticias = {"data": None, "last_fetch": 0}
+    # --- Gráfico de precios ---
+    days = [(datetime.today() - timedelta(days=i)).strftime("%d-%m") for i in range(6, -1, -1)]
+    prices = [4335, 4380, 4420, 4450, 4490, 4520, 4517]
+    fig = px.line(x=days, y=prices, title="ETH Price (Last 7 Days)", labels={'x': 'Day', 'y': 'Price (USD)'})
+    fig.update_layout(
+        plot_bgcolor='#111', paper_bgcolor='#111', font_color='white',
+        title_font_size=20, xaxis=dict(gridcolor='#333'), yaxis=dict(gridcolor='#333')
+    )
+    chart_html = fig.to_html(full_html=False)
 
-# --- Función para obtener datos de ETH ---
-def fetch_eth_data():
-    ahora = time.time()
-    if cache_eth["data"] and ahora - cache_eth["last_fetch"] < 60:
-        return cache_eth["data"]
+    # --- Noticias debajo del gráfico ---
+    news_html = "<h2 style='color:#1e90ff; margin-top:40px;'>Top Ethereum News (Last 7 Days)</h2>"
+    news_html += "<div style='display:flex; flex-direction:column; gap:15px; margin-bottom:30px;'>"
+    for n in ethereum_news:
+        news_html += f"<div style='background-color:#222; padding:15px; border-radius:8px; box-shadow: 0 0 10px #000;'>{n}</div>"
+    news_html += "</div>"
 
-    url = "https://api.coingecko.com/api/v3/coins/ethereum?localization=false&tickers=false"
-    try:
-        resp = requests.get(url)
-        resp.raise_for_status()
-        data = resp.json()
-        eth_info = {
-            "precio": data["market_data"]["current_price"]["usd"],
-            "volumen_24h": data["market_data"]["total_volume"]["usd"],
-            "market_cap": data["market_data"]["market_cap"]["usd"]
-        }
-        cache_eth["data"] = eth_info
-        cache_eth["last_fetch"] = ahora
-        return eth_info
-    except requests.exceptions.HTTPError as e:
-        if resp.status_code == 429:
-            print("Demasiadas solicitudes a CoinGecko, usando último valor guardado")
-            return cache_eth.get("data", {"precio": 0, "volumen_24h": 0, "market_cap": 0})
-        else:
-            raise e
-    except Exception as e:
-        print("Error al consultar CoinGecko:", e)
-        return {"precio": 0, "volumen_24h": 0, "market_cap": 0}
+    # --- Bloque de publicidad ---
+    ads_html = """
+    <div style="margin-top: 40px; padding: 25px; background-color: #222; color: white; text-align:center; border-radius:10px; box-shadow:0 0 15px #000;">
+        <p style="font-size:18px;"><strong>Advertisement</strong></p>
+        <p>Your ad could be here!</p>
+    </div>
+    """
 
-# --- Función para obtener noticias ETH ---
-def fetch_coindesk_eth():
-    ahora = time.time()
-    if cache_noticias["data"] and ahora - cache_noticias["last_fetch"] < 300:  # 5 min
-        return cache_noticias["data"]
+    # --- HTML completo ---
+    html = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Ethereum Weekly</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; margin: 40px; background: linear-gradient(135deg, #000, #111); color: white;">
+        <h1 style="color:#1e90ff; margin-bottom:30px;">Ethereum Weekly</h1>
+        {summary}
+        <h2 style="color:#1e90ff;">Price Evolution</h2>
+        {chart_html}
+        {news_html}
+        {ads_html}
+    </body>
+    </html>
+    """
 
-    url = "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml"
-    try:
-        resp = requests.get(url)
-        soup = BeautifulSoup(resp.content, "html.parser")
-        items = soup.find_all("item")
-        noticias = []
+    with open("index.html", "w", encoding="utf-8") as f:
+        f.write(html)
 
-        for item in items:
-            title = item.title.text
-            link = item.link.text
-            if "ETH" in title or "Ethereum" in title:
-                try:
-                    title_es = GoogleTranslator(source='en', target='es').translate(title)
-                except Exception as e:
-                    print("Error al traducir:", e)
-                    title_es = title
-                noticias.append({"titulo": title_es, "link": link})
-
-        cache_noticias["data"] = noticias
-        cache_noticias["last_fetch"] = ahora
-        return noticias
-    except Exception as e:
-        print("Error al obtener noticias:", e)
-        return cache_noticias.get("data", [])
-
-# --- Ruta principal ---
-@app.route("/")
-def index():
-    eth_data = fetch_eth_data()
-    noticias = fetch_coindesk_eth()
-    return render_template("index.html", eth_data=eth_data, noticias=noticias)
-
+# ------------------------------
+# Ejecutar todo
+# ------------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    generate_html()
+    print("index.html generated successfully!")
