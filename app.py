@@ -25,7 +25,7 @@ def generate_html():
     """
 
     # --- Noticias dinámicas ---
-    news_html = "<h2 style='color:#1e90ff; margin-top:40px;'>Latest Ethereum News</h2>"
+    news_html = "<h2 style='color:#1e90ff; margin-top:40px;'>Latest ETH News – Updated Every Hour</h2>"
     news_html += "<div style='display:flex; flex-direction:column; gap:15px; margin-bottom:30px;'>"
     for n in ethereum_news:
         news_html += f"<div style='background-color:#222; padding:15px; border-radius:8px; box-shadow: 0 0 10px #000;'>{n}</div>"
@@ -74,4 +74,3 @@ def generate_html():
 if __name__ == "__main__":
     generate_html()
     print("index.html generated successfully!")
-
